@@ -1,74 +1,79 @@
 mod tests;
 
 use futures::stream;
+use futures::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Result, Url};
 use select::document::Document;
 use select::predicate::{Name, Predicate};
 use std::collections::{BinaryHeap, HashSet};
 use std::str::FromStr;
-use stream::Stream;
 use std::vec;
-use futures::stream::StreamExt;
+use stream::Stream;
 
 /// Returns a Stream that runs over all URLs in the given domain of `url`.
 ///
-/// This is the preferred method to crawl domains, as the stream can yield 
-/// control back to the caller as it indexes.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+/// This is the preferred method to crawl over URL, as the stream can yield
+/// control back to the caller as it goes.
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `crawl_domain_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
 /// use futures::stream::StreamExt;
-/// 
+///
 /// #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.linuxmint.com/").unwrap();
 ///     println!("Crawling for {}:", &url);
-///     
+///
 ///     let mut stream = Box::pin(web_crawler_demo::crawl_domain(url)?);
-/// 
+///
 ///     while let Some(value) = stream.next().await {
-///       println!("Got {}", value.url);
-///   }
-///   Ok(())
+///         println!("Got {}", value.url);
+///     }
+///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give live output like:
-/// 
-/// > Got https://www.linuxmint.com/
-/// > Got https://www.linuxmint.com/topstories/topstories.css
-/// > Got https://www.linuxmint.com/teams.php
-/// > Got https://www.linuxmint.com/teams.php#content
-/// > Got https://www.linuxmint.com/store.php
-/// > Got https://www.linuxmint.com/store_tshirts.php
-/// > Got https://www.linuxmint.com/store_tshirts.php#content
-/// > Got https://www.linuxmint.com/store_mintbox3.php
-/// > Got https://www.linuxmint.com/store_mintbox3.php#content
-/// > Got https://www.linuxmint.com/store_mintbox.php
-/// > Got https://www.linuxmint.com/store_mintbox.php#content
-/// > Got https://www.linuxmint.com/store_computers.php
-/// > Got https://www.linuxmint.com/store_computers.php#content
-/// > Got https://www.linuxmint.com/store.php#content
-/// > Got https://www.linuxmint.com/sponsors.php
-/// > Got https://www.linuxmint.com/sponsors_info.php
-/// > Got https://www.linuxmint.com/sponsors_info.php#content
-/// > Got https://www.linuxmint.com/sponsors.php#content
-/// > Got https://www.linuxmint.com/screenshots.php
-/// > ....
+///
+/// ```text
+/// Crawling for https://www.linuxmint.com/:
+/// Got https://www.linuxmint.com/
+/// Got https://www.linuxmint.com/topstories/topstories.css
+/// Got https://www.linuxmint.com/teams.php
+/// Got https://www.linuxmint.com/teams.php#content
+/// Got https://www.linuxmint.com/store.php
+/// Got https://www.linuxmint.com/store_tshirts.php
+/// Got https://www.linuxmint.com/store_tshirts.php#content
+/// Got https://www.linuxmint.com/store_mintbox3.php
+/// Got https://www.linuxmint.com/store_mintbox3.php#content
+/// Got https://www.linuxmint.com/store_mintbox.php
+/// Got https://www.linuxmint.com/store_mintbox.php#content
+/// Got https://www.linuxmint.com/store_computers.php
+/// Got https://www.linuxmint.com/store_computers.php#content
+/// Got https://www.linuxmint.com/store.php#content
+/// Got https://www.linuxmint.com/sponsors.php
+/// Got https://www.linuxmint.com/sponsors_info.php
+/// Got https://www.linuxmint.com/sponsors_info.php#content
+/// Got https://www.linuxmint.com/sponsors.php#content
+/// Got https://www.linuxmint.com/screenshots.php
+/// ...
+/// ```
 pub fn crawl_domain(url: Url) -> Result<impl Stream<Item = CrawlResult>> {
     let builder = ClientBuilder::new();
     let client = builder.build()?;
     Ok(crawl_domain_with_client(client, url))
 }
 
-/// Alternative to `crawl_domain` that accepts a `client` object which is 
-/// used to send the crawl requests.
+/// Alternative to `crawl_domain` that accepts a `client` object.
+///
+/// In cases where multiple requests are made, reuse of the same client is
+/// better than creating a new `Client` object for each call.
 pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = CrawlResult> {
     let init_state = CrawlStreamState::create(client, url);
     // From our initial state attempt to generate a stream.
@@ -77,46 +82,50 @@ pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = 
 
 /// Returns a complete list of all URLs visited in the given domain of `url`.
 ///  
-/// This task does not complete until all URLs are visited and as such may not 
-/// be suitable for large domains. See `crawl_domain` for the `Stream` 
+/// This task does not complete until all URLs are visited and as such may not
+/// be suitable for large domains. See `crawl_domain` for the `Stream`
 /// equivalent to this `Future`.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `unique_url_list_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
-/// 
+///
 /// #[tokio::main]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
-///     println!("Crawling for {}:", url);
+///     println!("Crawling for {}:", &url);
 ///     
-///     let list = web_crawler_demo::unique_url_list(url.clone()).await?;
-///     for url in list {
-///       println!("Url found: {}", url);
+///     let list = web_crawler_demo::unique_url_list(url).await?;
+///     for u in list {
+///       println!("Url found: {}", u);
 ///     }
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give output:
-/// 
-/// > Crawling for https://www.enhance.com/:
-/// > Url found: https://www.enhance.com/
-/// > Url found: https://www.enhance.com/styles.208feb938cace1c3135d.css
-/// > Url found: https://www.enhance.com/favicon.ico
+///
+/// ```text
+/// Crawling for https://www.enhance.com/:
+/// Url found: https://www.enhance.com/
+/// Url found: https://www.enhance.com/styles.208feb938cace1c3135d.css
+/// Url found: https://www.enhance.com/favicon.ico
+/// ```
 pub async fn unique_url_list(url: Url) -> Result<vec::Vec<Url>> {
     let builder = ClientBuilder::new();
     let client = builder.build()?;
     Ok(unique_url_list_with_client(client, url).await)
 }
 
-/// Alternative to `unique_url_list` that accepts a `client` object which is 
-/// used to send the crawl requests.
+/// Alternative to `unique_url_list` that accepts a `client` object.
+///
+/// In cases where multiple requests are made, reuse of the same client is
+/// better than creating a new `Client` object for each call.
 pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<Url> {
     crawl_domain_with_client(client, url)
         .map(|r| r.url)
@@ -126,42 +135,46 @@ pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<U
 
 /// Returns a complete count of all URLs visited in the given domain of `url`.
 ///  
-/// This task does not complete until all URLs are visited and as such may not 
-/// be suitable for large domains. See `crawl_domain` for the `Stream` 
+/// This task does not complete until all URLs are visited and as such may not
+/// be suitable for large domains. See `crawl_domain` for the `Stream`
 /// equivalent to this `Future`.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `unique_url_count_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
-/// 
+///
 /// #[tokio::main]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
-///     println!("Crawling for {}:", url);
+///     println!("Crawling for {}:", &url);
 ///     
-///     let list = web_crawler_demo::unique_url_count(url.clone()).await?;
-///     println!("Urls found: {}", url);
+///     let count = web_crawler_demo::unique_url_count(url).await?;
+///     println!("Urls found: {}", count);
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give output:
-/// 
-/// > Crawling for https://www.enhance.com/:
-/// > Urls found: 3
+///
+/// ```text
+/// Crawling for https://www.enhance.com/:
+/// Urls found: 3
+/// ```
 pub async fn unique_url_count(url: Url) -> Result<usize> {
     let builder = ClientBuilder::new();
     let client = builder.build()?;
     Ok(unique_url_count_with_client(client, url).await)
 }
 
-/// Alternative to `unique_url_count` that accepts a `client` object which is 
-/// used to send the crawl requests.
+/// Alternative to `unique_url_count` that accepts a `client` object.
+///
+/// In cases where multiple requests are made, reuse of the same client is
+/// better than creating a new `Client` object for each call.
 pub async fn unique_url_count_with_client(client: Client, url: Url) -> usize {
     crawl_domain_with_client(client, url)
         .fold(0, |i, _| std::future::ready(i + 1))
@@ -251,7 +264,7 @@ impl CrawlStreamState {
             .filter_map(|raw_url| {
                 Url::from_str(raw_url)
                     .or_else(|e| {
-                        // If the URL is relative then `Url::parse` will fail. 
+                        // If the URL is relative then `Url::parse` will fail.
                         // We can try again by using the document URL
                         // as our base.
                         if e == url::ParseError::RelativeUrlWithoutBase {
@@ -262,6 +275,7 @@ impl CrawlStreamState {
                     })
                     .ok()
             })
+            // Ensure URL is tied to our domain.
             .filter(|url| document_url.domain() == url.domain());
 
         // Take our URL collection and insert it into the queue.

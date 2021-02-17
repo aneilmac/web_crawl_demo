@@ -54,7 +54,7 @@ async fn test_document_for_url_failure() {
 
 /// Attempts to create a valid URL to the `res` folder which contains
 /// dummy indexable file: `simple.html`.
-pub(crate) fn simple_html() -> Mock {
+fn simple_html() -> Mock {
     mock("GET", "/simple.html")
         .with_status(201)
         .with_header("content-type", "text/plain")
@@ -108,7 +108,7 @@ async fn test_pop() {
 
 /// Attempts to create a valid URL to the `res` folder which contains
 /// dummy indexable file: `self_ref.html`.
-pub(crate)  fn self_ref_html() -> Mock {
+fn self_ref_html() -> Mock {
     mock("GET", "/self_ref.html")
         .with_status(201)
         .with_header("content-type", "text/plain")
@@ -119,7 +119,7 @@ pub(crate)  fn self_ref_html() -> Mock {
 
 /// Attempts to create a valid URL to the `res` folder which contains
 /// dummy indexable file: `link_node.html`.
-pub(crate)  fn link_node_html() -> Mock {
+fn link_node_html() -> Mock {
     mock("GET", "/link_node.html")
         .with_status(201)
         .with_header("content-type", "text/plain")
