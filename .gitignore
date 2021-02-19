@@ -1,2 +1,2 @@
-/target
-Cargo.lock
+target/
+/web_crawler/Cargo.lock

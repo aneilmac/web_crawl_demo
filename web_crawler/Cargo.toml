@@ -1,0 +1,27 @@
+[package]
+name = "web_crawler_lib"
+version = "0.1.0"
+authors = ["Archibald Neil MacDonald <archibaldnmac@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "web_crawler_lib"
+path = "src/lib.rs"
+
+[dependencies]
+select = "^0.5.0"
+reqwest = "^0.11.0"
+futures = "0.3"
+url = "^2.2.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+mockito = "^0.29.0"
+
+[[example]]
+name = "use_stream"
+crate-type = ["bin"]
+
+[[example]]
+name = "get_list"
+crate-type = ["bin"]

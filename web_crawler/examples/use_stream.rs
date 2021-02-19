@@ -1,13 +1,12 @@
 use futures::stream::StreamExt;
 use reqwest::{Result, Url};
-use web_crawler_demo;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn main() -> Result<()> {
     let url = Url::parse("https://www.linuxmint.com/").unwrap();
     println!("Crawling for {}:", &url);
 
-    let mut stream = Box::pin(web_crawler_demo::crawl_domain(url)?);
+    let mut stream = Box::pin(web_crawler_lib::crawl_domain(url)?);
 
     while let Some(value) = stream.next().await {
         println!("Got {}", value.url);
