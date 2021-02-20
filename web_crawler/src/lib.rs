@@ -213,7 +213,7 @@ impl CrawlStreamState {
         }
     }
 
-    /// Adds th given URL, `url` to our list of URLs that are to be visited.
+    /// Adds the given URL, `url` to our list of URLs that are to be visited.
     ///
     /// This function returns `None` if `url` already exists in our collection
     /// of already visited URLs, otherwise `Some(())` is returned when the `url`
@@ -247,7 +247,7 @@ impl CrawlStreamState {
     }
 
     /// Given a URL, `url` and a html-document `html`, goes through all valid
-    /// href tags in the document, and if they have the same domain/scheme as 
+    /// href tags in the document, and if they have the same domain/scheme as
     /// `url`, append them to the to-visit queue when applicable.
     fn push_document_links(&mut self, document_url: &Url, html: &Html) {
         let selector = Selector::parse("a, link").unwrap();
