@@ -1,46 +1,46 @@
 mod tests;
 
 use futures::stream;
+use futures::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Result, Url};
 use select::document::Document;
 use select::predicate::{Name, Predicate};
 use std::collections::{BinaryHeap, HashSet};
 use std::str::FromStr;
-use stream::Stream;
 use std::vec;
-use futures::stream::StreamExt;
+use stream::Stream;
 
 /// Returns a Stream that runs over all URLs in the given domain of `url`.
 ///
-/// This is the preferred method to crawl over URL, as the stream can yield 
+/// This is the preferred method to crawl over URL, as the stream can yield
 /// control back to the caller as it goes.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `crawl_domain_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
 /// use futures::stream::StreamExt;
-/// 
+///
 /// #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.linuxmint.com/").unwrap();
 ///     println!("Crawling for {}:", &url);
 ///
 ///     let mut stream = Box::pin(web_crawler_demo::crawl_domain(url)?);
-/// 
+///
 ///     while let Some(value) = stream.next().await {
 ///         println!("Got {}", value.url);
 ///     }
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give live output like:
-/// 
+///
 /// ```text
 /// Crawling for https://www.linuxmint.com/:
 /// Got https://www.linuxmint.com/
@@ -71,8 +71,8 @@ pub fn crawl_domain(url: Url) -> Result<impl Stream<Item = CrawlResult>> {
 }
 
 /// Alternative to `crawl_domain` that accepts a `client` object.
-/// 
-/// In cases where multiple requests are made, reuse of the same client is 
+///
+/// In cases where multiple requests are made, reuse of the same client is
 /// better than creating a new `Client` object for each call.
 pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = CrawlResult> {
     let init_state = CrawlStreamState::create(client, url);
@@ -82,19 +82,19 @@ pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = 
 
 /// Returns a complete list of all URLs visited in the given domain of `url`.
 ///  
-/// This task does not complete until all URLs are visited and as such may not 
-/// be suitable for large domains. See `crawl_domain` for the `Stream` 
+/// This task does not complete until all URLs are visited and as such may not
+/// be suitable for large domains. See `crawl_domain` for the `Stream`
 /// equivalent to this `Future`.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `unique_url_list_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
-/// 
+///
 /// #[tokio::main]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
@@ -107,9 +107,9 @@ pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = 
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give output:
-/// 
+///
 /// ```text
 /// Crawling for https://www.enhance.com/:
 /// Url found: https://www.enhance.com/
@@ -123,8 +123,8 @@ pub async fn unique_url_list(url: Url) -> Result<vec::Vec<Url>> {
 }
 
 /// Alternative to `unique_url_list` that accepts a `client` object.
-/// 
-/// In cases where multiple requests are made, reuse of the same client is 
+///
+/// In cases where multiple requests are made, reuse of the same client is
 /// better than creating a new `Client` object for each call.
 pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<Url> {
     crawl_domain_with_client(client, url)
@@ -135,19 +135,19 @@ pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<U
 
 /// Returns a complete count of all URLs visited in the given domain of `url`.
 ///  
-/// This task does not complete until all URLs are visited and as such may not 
-/// be suitable for large domains. See `crawl_domain` for the `Stream` 
+/// This task does not complete until all URLs are visited and as such may not
+/// be suitable for large domains. See `crawl_domain` for the `Stream`
 /// equivalent to this `Future`.
-/// 
-/// For multiple requests it is recommended you use the same client across 
+///
+/// For multiple requests it is recommended you use the same client across
 /// requests. See `unique_url_count_with_client`.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// use web_crawler_demo;
 /// use reqwest::{Result, Url};
-/// 
+///
 /// #[tokio::main]
 /// pub async fn main() -> Result<()> {
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
@@ -158,9 +158,9 @@ pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<U
 ///     Ok(())
 /// }
 /// ```
-/// 
+///
 /// Would give output:
-/// 
+///
 /// ```text
 /// Crawling for https://www.enhance.com/:
 /// Urls found: 3
@@ -172,8 +172,8 @@ pub async fn unique_url_count(url: Url) -> Result<usize> {
 }
 
 /// Alternative to `unique_url_count` that accepts a `client` object.
-/// 
-/// In cases where multiple requests are made, reuse of the same client is 
+///
+/// In cases where multiple requests are made, reuse of the same client is
 /// better than creating a new `Client` object for each call.
 pub async fn unique_url_count_with_client(client: Client, url: Url) -> usize {
     crawl_domain_with_client(client, url)
@@ -264,7 +264,7 @@ impl CrawlStreamState {
             .filter_map(|raw_url| {
                 Url::from_str(raw_url)
                     .or_else(|e| {
-                        // If the URL is relative then `Url::parse` will fail. 
+                        // If the URL is relative then `Url::parse` will fail.
                         // We can try again by using the document URL
                         // as our base.
                         if e == url::ParseError::RelativeUrlWithoutBase {

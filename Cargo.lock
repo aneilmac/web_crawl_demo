@@ -1757,6 +1757,8 @@ dependencies = [
 name = "web_crawler_server"
 version = "0.1.0"
 dependencies = [
+ "futures",
+ "reqwest",
  "serde",
  "tokio",
  "url",
