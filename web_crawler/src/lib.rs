@@ -1,14 +1,20 @@
 mod tests;
 
 use futures::stream;
-use futures::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Result, Url};
-use select::document::Document;
-use select::predicate::{Name, Predicate};
+use scraper::html::Html;
+use scraper::selector::Selector;
 use std::collections::{BinaryHeap, HashSet};
 use std::str::FromStr;
 use std::vec;
 use stream::Stream;
+use stream::StreamExt;
+
+/// CrawlResult is output of a crawl.
+pub struct CrawlResult {
+    /// A given URL that was crawled.
+    pub url: Url,
+}
 
 /// Returns a Stream that runs over all URLs in the given domain of `url`.
 ///
@@ -20,8 +26,8 @@ use stream::Stream;
 ///
 /// ## Example
 ///
-/// ```rust
-/// use web_crawler_demo;
+/// ```rust,no_run
+/// use web_crawler_lib::crawl_domain;
 /// use reqwest::{Result, Url};
 /// use futures::stream::StreamExt;
 ///
@@ -30,7 +36,7 @@ use stream::Stream;
 ///     let url = Url::parse("https://www.linuxmint.com/").unwrap();
 ///     println!("Crawling for {}:", &url);
 ///
-///     let mut stream = Box::pin(web_crawler_demo::crawl_domain(url)?);
+///     let mut stream = Box::pin(crawl_domain(url)?);
 ///
 ///     while let Some(value) = stream.next().await {
 ///         println!("Got {}", value.url);
@@ -91,8 +97,8 @@ pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = 
 ///
 /// ## Example
 ///
-/// ```rust
-/// use web_crawler_demo;
+/// ```rust,no_run
+/// use web_crawler_lib::unique_url_list;
 /// use reqwest::{Result, Url};
 ///
 /// #[tokio::main]
@@ -100,7 +106,7 @@ pub fn crawl_domain_with_client(client: Client, url: Url) -> impl Stream<Item = 
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
 ///     println!("Crawling for {}:", &url);
 ///     
-///     let list = web_crawler_demo::unique_url_list(url).await?;
+///     let list = unique_url_list(url).await?;
 ///     for u in list {
 ///       println!("Url found: {}", u);
 ///     }
@@ -144,8 +150,8 @@ pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<U
 ///
 /// ## Example
 ///
-/// ```rust
-/// use web_crawler_demo;
+/// ```rust,no_run
+/// use web_crawler_lib::unique_url_count;
 /// use reqwest::{Result, Url};
 ///
 /// #[tokio::main]
@@ -153,7 +159,7 @@ pub async fn unique_url_list_with_client(client: Client, url: Url) -> vec::Vec<U
 ///     let url = Url::parse("https://www.enhance.com/").unwrap();
 ///     println!("Crawling for {}:", &url);
 ///     
-///     let count = web_crawler_demo::unique_url_count(url).await?;
+///     let count = unique_url_count(url).await?;
 ///     println!("Urls found: {}", count);
 ///     Ok(())
 /// }
@@ -177,17 +183,8 @@ pub async fn unique_url_count(url: Url) -> Result<usize> {
 /// better than creating a new `Client` object for each call.
 pub async fn unique_url_count_with_client(client: Client, url: Url) -> usize {
     crawl_domain_with_client(client, url)
-        .fold(0, |i, _| std::future::ready(i + 1))
+        .fold(0, |i, _| futures::future::ready(i + 1))
         .await
-}
-
-/// CrawlResult is output of a crawl.
-pub struct CrawlResult {
-    /// A given URL that was crawled.
-    pub url: Url,
-    /// The result of the crawl for the given URL, either an error if the crawl
-    /// failed or a Document object representing the page.
-    pub html: Result<Document>,
 }
 
 /// The current state of the CrawlStream.
@@ -235,32 +232,28 @@ impl CrawlStreamState {
     /// and returns the result in a `CrawlResult`.
     ///
     /// All documents are retrieved via the GET HTTP method.
-    async fn document_for_url(&self, url: &Url) -> CrawlResult {
-        CrawlResult {
-            url: url.clone(),
-            html: {
-                let res = self.client.get(url.clone()).send().await;
-                match res {
+    async fn document_for_url(&self, url: &Url) -> Result<Html> {
+        let res = self.client.get(url.clone()).send().await;
+        match res {
+            Err(e) => Err(e),
+            Ok(t) => {
+                let body = t.text_with_charset("utf-8").await;
+                match body {
                     Err(e) => Err(e),
-                    Ok(t) => {
-                        let body = t.text().await;
-                        match body {
-                            Err(e) => Err(e),
-                            Ok(html) => Ok(Document::from(html.as_str())),
-                        }
-                    }
+                    Ok(html) => Ok(Html::parse_document(html.as_str())),
                 }
-            },
+            }
         }
     }
 
-    /// Given a URL, `url` and `Document`, `document`, goes through all valid
-    /// href tags in the document, and if they have the same domain as `url`,
-    /// append them to the to-visit queue when applicable.
-    fn push_document_links(&mut self, document_url: &Url, html: &Document) {
+    /// Given a URL, `url` and a html-document `html`, goes through all valid
+    /// href tags in the document, and if they have the same domain/scheme as 
+    /// `url`, append them to the to-visit queue when applicable.
+    fn push_document_links(&mut self, document_url: &Url, html: &Html) {
+        let selector = Selector::parse("a, link").unwrap();
         let urls = html
-            .find(Name("a").or(Name("link")))
-            .filter_map(|n| n.attr("href"))
+            .select(&selector)
+            .filter_map(|n| n.value().attr("href"))
             .filter_map(|raw_url| {
                 Url::from_str(raw_url)
                     .or_else(|e| {
@@ -275,8 +268,10 @@ impl CrawlStreamState {
                     })
                     .ok()
             })
-            // Ensure URL is tied to our domain.
-            .filter(|url| document_url.domain() == url.domain());
+            // Ensure URL is tied to our domain and scheme.
+            .filter(|url| {
+                document_url.domain() == url.domain() && document_url.scheme() == url.scheme()
+            });
 
         // Take our URL collection and insert it into the queue.
         for url in urls {
@@ -307,15 +302,13 @@ impl CrawlStreamState {
                     // the next URL. Otherwise we index and grab the document.
                     let is_unvisited = self.visited.insert(url.clone());
                     if is_unvisited {
-                        let doc_for_url = self.document_for_url(&url).await;
-
                         // The newly produced document may contain links to
                         // additional URLs to index within this repo. Add these
                         // to our to-visit queue if applicable.
-                        if let Ok(html) = &doc_for_url.html {
-                            self.push_document_links(&url, html);
+                        if let Ok(doc) = self.document_for_url(&url).await {
+                            self.push_document_links(&url, &doc);
                         }
-                        return Some((doc_for_url, self));
+                        return Some((CrawlResult { url }, self));
                     }
                 }
             }

@@ -48,8 +48,7 @@ async fn test_document_for_url_failure() {
     let crawl_state = default_state();
     let url = Url::parse("https://foo.invalid/failure.html").unwrap();
     let result = crawl_state.document_for_url(&url).await;
-    println!("{:?}", result.html);
-    assert!(result.html.is_err())
+    assert!(result.is_err())
 }
 
 /// Attempts to create a valid URL to the `res` folder which contains
@@ -76,8 +75,8 @@ async fn test_document_for_url_success() {
     let crawl_state = default_state();
     let result = crawl_state.document_for_url(&mock_url("simple.html")).await;
     assert_eq!(
-        result.html.unwrap(),
-        Document::from(include_str!("../res/simple.html"))
+        result.unwrap(),
+        Html::parse_document(include_str!("../res/simple.html"))
     )
 }
 
