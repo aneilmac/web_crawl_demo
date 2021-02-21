@@ -3,7 +3,7 @@ mod crawler_api;
 mod tests;
 
 use crawl_domain::CrawlDomain;
-use crawler_api::{add_domain, get_domain_url_count, get_domain_urls, is_accessible, Domains};
+use crawler_api::{add_domain, get_domain_url_count, get_domain_urls, Domains};
 use reqwest::Client;
 use warp::Filter;
 
@@ -23,7 +23,6 @@ async fn main() {
         .and(warp::path::end())
         .and(warp::body::json())
         .and(client)
-        //.and_then(|_, domain : CrawlDomain, client| is_accessible(client, domain.as_ref().clone()))
         .and_then(add_domain)
         .or(crawler
             .clone()
