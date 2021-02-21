@@ -268,10 +268,8 @@ impl CrawlStreamState {
                     })
                     .ok()
             })
-            // Ensure URL is tied to our domain and scheme.
-            .filter(|url| {
-                document_url.domain() == url.domain() && document_url.scheme() == url.scheme()
-            });
+            // Ensure URL is tied to our domain.
+            .filter(|url| document_url.domain() == url.domain());
 
         // Take our URL collection and insert it into the queue.
         for url in urls {

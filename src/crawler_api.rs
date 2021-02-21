@@ -3,15 +3,77 @@ use futures::stream::StreamExt;
 use reqwest::Client;
 use serde::Serialize;
 use std::boxed::Box;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use warp::reply::Json;
 use warp::Rejection;
 use web_crawler_lib::crawl_domain_with_client;
 
-#[derive(Default, Serialize, Debug)]
-pub struct UrlListResult {
+/// Collection of URLS for a given domain as known by the server.
+#[derive(Serialize, Debug, Default)]
+pub struct DomainUrls {
+    /// Is the server still crawling the domain for URLS or not?
     crawl_completed: bool,
-    urls: std::vec::Vec<String>,
+    /// Collection of URLs so far.
+    urls: std::vec::Vec<url::Url>,
+}
+
+type Urls = Arc<RwLock<DomainUrls>>;
+type DomainCollection = std::collections::HashMap<CrawlDomain, Urls>;
+
+/// Collection of all our domain keys mapped to a collection of known unique
+/// URLs in the domain.
+pub type Domains = Arc<RwLock<DomainCollection>>;
+
+#[derive(Debug)]
+struct DomainInaccessible;
+
+impl warp::reject::Reject for DomainInaccessible {}
+
+pub async fn is_accessible(client: Client, url: url::Url) -> Result<(), Rejection> {
+    match client.head(url).send().await.is_ok() {
+        true => Ok(()),
+        false => Err(warp::reject::custom(DomainInaccessible)),
+    }
+}
+
+#[derive(Debug)]
+struct DomainAlreadyAdded;
+
+impl warp::reject::Reject for DomainAlreadyAdded {}
+
+pub async fn add_domain(
+    domains: Domains,
+    domain_key: CrawlDomain,
+    client: Client,
+) -> Result<CrawlDomain, Rejection> {
+    let mut domains = domains.write().unwrap();
+    if domains.contains_key(&domain_key) {
+        Err(warp::reject::custom(DomainAlreadyAdded))
+    } else {
+        let urls = Urls::default();
+        let _ = domains.insert(domain_key.clone(), urls.clone());
+        drop(domains);
+
+        let url = domain_key.as_ref().clone();
+        tokio::spawn(async move {
+            let mut crawl_stream = Box::pin(crawl_domain_with_client(client, url));
+            while let Some(crawl_result) = crawl_stream.next().await {
+                urls.write().unwrap().urls.push(crawl_result.url);
+            }
+            // Finished trawling URLs, not that we are now completed.
+            urls.write().unwrap().crawl_completed = true;
+        });
+        Ok(domain_key)
+    }
+}
+
+pub async fn get_domain_urls(domains: Domains, domain_key: CrawlDomain) -> Result<Json, Rejection> {
+    let domains = domains.read().unwrap();
+    if let Some(urls) = domains.get(&domain_key) {
+        let urls = urls.read().unwrap();
+        return Ok(warp::reply::json(&*urls));
+    }
+    Err(warp::reject::not_found())
 }
 
 #[derive(Serialize, Debug)]
@@ -21,71 +83,22 @@ pub struct UrlListCountResult {
 }
 
 impl UrlListCountResult {
-    pub fn create(result: &UrlListResult) -> UrlListCountResult {
-        UrlListCountResult {
-            crawl_completed: result.crawl_completed,
-            url_count: result.urls.iter().count(),
+    pub fn create(domain_urls: &DomainUrls) -> Self {
+        Self {
+            crawl_completed: domain_urls.crawl_completed,
+            url_count: domain_urls.urls.iter().count(),
         }
     }
 }
 
-pub type DomainCollection = std::collections::HashMap<CrawlDomain, UrlListResult>;
-pub type Domains = Arc<Mutex<DomainCollection>>;
-
-#[derive(Debug)]
-struct DomainAlreadyAdded;
-
-impl warp::reject::Reject for DomainAlreadyAdded {}
-
-pub async fn get_domain_urls(domains: Domains, domain: CrawlDomain) -> Result<Json, Rejection> {
-    let domains = domains.lock().unwrap();
-    if let Some((_, result)) = domains.get_key_value(&domain) {
-        return Ok(warp::reply::json(result));
-    }
-    Err(warp::reject::not_found())
-}
-
 pub async fn get_domain_url_count(
     domains: Domains,
-    domain: CrawlDomain,
+    domain_key: CrawlDomain,
 ) -> Result<Json, Rejection> {
-    let domains = domains.lock().unwrap();
-    if let Some((_, result)) = domains.get_key_value(&domain) {
-        return Ok(warp::reply::json(&UrlListCountResult::create(result)));
+    let domains = domains.read().unwrap();
+    if let Some(urls) = domains.get(&domain_key) {
+        let urls = urls.read().unwrap();
+        return Ok(warp::reply::json(&UrlListCountResult::create(&urls)));
     }
     Err(warp::reject::not_found())
-}
-
-pub async fn add_domain(
-    domains_arc: Domains,
-    domain: CrawlDomain,
-    client: Client,
-) -> Result<CrawlDomain, Rejection> {
-    let mut domains = domains_arc.lock().unwrap();
-
-    if domains.contains_key(&domain) {
-        Err(warp::reject::custom(DomainAlreadyAdded))
-    } else {
-        let _ = domains.insert(domain.clone(), UrlListResult::default());
-        drop(domains);
-
-        let out_domain = domain.clone();
-        tokio::spawn(async move {
-            let mut crawl_stream =
-                Box::pin(crawl_domain_with_client(client, domain.as_ref().clone()));
-            while let Some(crawl_result) = crawl_stream.next().await {
-                let mut domains = domains_arc.lock().unwrap();
-                if let Some(result) = domains.get_mut(&domain) {
-                    result.urls.push(crawl_result.url.into_string());
-                }
-            }
-
-            // Finished trawling URLs, not that we are now completed.
-            let mut domains = domains_arc.lock().unwrap();
-            if let Some(result) = domains.get_mut(&domain) {
-                result.crawl_completed = true;
-            }
-        });
-        Ok(out_domain)
-    }
 }
