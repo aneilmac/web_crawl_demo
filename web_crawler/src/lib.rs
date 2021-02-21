@@ -268,9 +268,10 @@ impl CrawlStreamState {
                     })
                     .ok()
             })
-            // Ensure URL is tied to our domain and scheme.
+            // Ensure URL is tied to our domain and is a http/https scheme.
             .filter(|url| {
-                document_url.domain() == url.domain() && document_url.scheme() == url.scheme()
+                document_url.domain() == url.domain()
+                    && (url.scheme() == "http" || url.scheme() == "https")
             });
 
         // Take our URL collection and insert it into the queue.

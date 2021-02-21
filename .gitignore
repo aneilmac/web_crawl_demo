@@ -1,2 +1,3 @@
 target/
 /web_crawler/Cargo.lock
+.DS_Store

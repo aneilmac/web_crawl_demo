@@ -9,9 +9,13 @@ struct DomainNotFound;
 
 impl warp::reject::Reject for DomainNotFound {}
 
+/// The result returned to the user when they request the list of all crawled
+/// URLs associated with a given domain.
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct UrlListResult {
+    /// Flag indicating if the server is still crawling the given domain.
     pub crawl_completed: bool,
+    // All URLs collected for the given domain (so-far.)
     pub urls: std::vec::Vec<url::Url>,
 }
 
@@ -30,15 +34,7 @@ impl warp::Reply for UrlListResult {
     }
 }
 
-/// Returns the complete list of URLs for a given domain as a json object. The
-/// JSON object takes the form of:
-///
-/// ```text
-/// {
-///   "crawl_completed": [true|false]
-///   "urls": ["https://foo.com", ...]
-/// }
-/// ```
+/// Returns the complete list of URLs for a given domain.
 pub async fn get_domain_urls(
     domains: Domains,
     domain_key: CrawlDomain,
@@ -51,9 +47,13 @@ pub async fn get_domain_urls(
     Err(warp::reject::custom(DomainNotFound))
 }
 
+/// The result returned to the user when they request the list of all crawled
+/// URLs associated with a given domain.
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct UrlListCountResult {
+    /// Flag indicating if the server is still crawling the given domain.
     pub crawl_completed: bool,
+    // Count of all URLs collected for the given domain (so-far.)
     pub url_count: usize,
 }
 
@@ -72,15 +72,7 @@ impl warp::Reply for UrlListCountResult {
     }
 }
 
-/// Returns the complete count of URLs for a given domain as a json object. The
-/// JSON object takes the form of:
-///
-/// ```text
-/// {
-///   "crawl_completed": [true|false]
-///   "url_count": N
-/// }
-/// ```
+/// Returns the complete count of URLs for a given domain.
 pub async fn get_domain_url_count(
     domains: Domains,
     domain_key: CrawlDomain,

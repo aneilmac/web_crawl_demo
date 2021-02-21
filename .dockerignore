@@ -1,0 +1,10 @@
+.vscode
+.git
+.gitignore
+.DS_Store
+/README.md
+/LICENSE
+/Dockerfile
+/target/
+/web_crawler/target/
+/web_crawler/Cargo.lock

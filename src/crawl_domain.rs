@@ -6,10 +6,12 @@ use std::str::FromStr;
 use url::Url;
 use warp::http::Response;
 
-/// Struct that represents a URL's domain.
+/// Struct that represents the domain/host of a valid URL.
 ///
 /// This is internally backed by a `Url` such that we can retrieve the URL the
-/// domain was constructed with.
+/// `CrawlDomain` was initially constructed with.
+///
+/// Internally we use this as the key for our URL-list lookup.
 #[derive(Deserialize, Eq, Clone)]
 #[serde(try_from = "&str")]
 pub struct CrawlDomain {
@@ -31,7 +33,7 @@ impl warp::Reply for CrawlDomain {
     }
 }
 
-// Convert the `CrawlDomain` back into the `Url` used to constuct it.
+// Convert the `CrawlDomain` back into the `Url` used to construct it.
 impl AsRef<Url> for CrawlDomain {
     fn as_ref(&self) -> &Url {
         &self.url
@@ -60,7 +62,7 @@ impl Hash for CrawlDomain {
 }
 
 /// Simple helper method that lets us assume a https scheme if no scheme is
-/// provided. If the parse of the string failed, attempts a reparse
+/// provided. If the parse of the string failed, attempts a re-parse
 /// by prepending the string with `https://`.
 fn attempt_add_scheme(s: &str) -> Result<Url, url::ParseError> {
     let url = Url::parse(s);
@@ -82,9 +84,11 @@ impl FromStr for CrawlDomain {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let url = attempt_add_scheme(s)?;
 
+        // Ensure URL has a host.
         let _ = url
             .host_str()
             .ok_or(url::ParseError::RelativeUrlWithoutBase)?;
+
         Ok(CrawlDomain { url })
     }
 }

@@ -1,3 +1,5 @@
+//! This module represents the API functionality required to perform the
+//! start-crawl, get-urls, and get-url-count calls.
 mod add_domain;
 mod domains;
 mod get_urls;
