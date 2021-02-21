@@ -6,9 +6,10 @@ use std::str::FromStr;
 use url::Url;
 use warp::http::Response;
 
-/// Struct that represents a URL's domain. This is internally backed by a URL
-/// so we can retrieve the URL the Domain was constructed with, but in terms of
-/// Equality and Hash tests only compare to the URL domain.
+/// Struct that represents a URL's domain.
+///
+/// This is internally backed by a `Url` such that we can retrieve the URL the
+/// domain was constructed with.
 #[derive(Deserialize, Eq, Clone)]
 #[serde(try_from = "&str")]
 pub struct CrawlDomain {
@@ -16,11 +17,11 @@ pub struct CrawlDomain {
 }
 
 impl CrawlDomain {
-    /// Returns the domain as a string/
-    fn domain(&self) -> &str {
-        // We can only be constructed if a domain exists, so can unwrap without
-        // checking here.
-        self.url.domain().unwrap()
+    /// Returns the domain as a string.
+    pub fn domain(&self) -> &str {
+        // We can only be constructed if a host string exists, so can unwrap
+        // without checking here.
+        self.url.host_str().unwrap()
     }
 }
 
@@ -80,8 +81,9 @@ impl FromStr for CrawlDomain {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let url = attempt_add_scheme(s)?;
+
         let _ = url
-            .domain()
+            .host_str()
             .ok_or(url::ParseError::RelativeUrlWithoutBase)?;
         Ok(CrawlDomain { url })
     }
@@ -113,9 +115,11 @@ mod test {
     }
 
     #[test]
-    fn test_no_domain() {
-        let url = "https://127.0.0.1/";
-        let crawl_domain = CrawlDomain::from_str(url);
-        assert!(crawl_domain.is_err());
+    fn test_ip_domain() {
+        // IP Addresses are not strictly domains, but their inclusion helps our
+        // testing story so no harm in including these.
+        let url = "http://127.0.0.1/";
+        let crawl_domain = CrawlDomain::from_str(url).unwrap();
+        assert_eq!(crawl_domain.domain(), "127.0.0.1");
     }
 }

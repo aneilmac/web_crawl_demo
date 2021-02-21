@@ -1,11 +1,8 @@
-
-
 use crate::crawl_domain::CrawlDomain;
-use serde::Serialize;
 use std::sync::{Arc, RwLock};
 
 /// Collection of URLS for a given domain as known by the server.
-#[derive(Serialize, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct DomainUrls {
     /// Is the server still crawling the domain for URLS or not?
     pub crawl_completed: bool,
