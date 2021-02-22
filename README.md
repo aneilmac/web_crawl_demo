@@ -41,7 +41,7 @@ The count api for domain, `DOMAIN` has a similar syntax.
 
 To build and run the debug webserver listening to address `127.0.0.1:8080`:
 
-```
+```bash
 cargo build
 cargo run
 ```
@@ -50,7 +50,7 @@ cargo run
 
 To run the full test suite across the application and crawler library:
 
-```
+```bash
 cargo test # Test the application
 cargo test -p web_crawler_lib # Test the crawler library
 ```

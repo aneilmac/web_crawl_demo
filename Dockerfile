@@ -8,8 +8,8 @@ RUN cargo build --release
 
 # Release stage
 FROM debian:buster-slim
-RUN apt-get update && apt-get install -y openssl
-EXPOSE 8080
+RUN apt-get update && apt-get install -y openssl ca-certificates
+EXPOSE 8080 80 443
 # copy the build artifact from the build stage
 COPY --from=builder /usr/src/webcrawler_demo/target/release/web_crawler_server /usr/local/bin/web_crawler_server
 # Run the web crawler
